@@ -1,180 +1,182 @@
-# Architecture overview for HTTP 434 in ShadowPay
+# Architecture overview for HTTP 434 Private Payment Proof Required
 
-This document explains how HTTP status code `434 Private Payment Proof Required` fits into the ShadowPay payment architecture and how it works together with `402 Payment Required` and other status codes.
+This document gives a high level view of where HTTP status code `434 Private Payment Proof Required` fits in a system that uses private payment proofs.
 
-The goal is to give API and backend engineers a mental model of where 434 sits in the full stack:
+The focus is:
 
-- HTTP layer  
-- ShadowPay API and SDK  
-- ZK proof system  
-- Solana escrow and settlement
+- How 434 relates to 402 Payment Required  
+- How 434 fits into a typical request flow  
+- How to layer private payment logic without polluting business code  
+- How protocol specific profiles, such as ShadowPay, plug into the core model
 
 ---
 
-## 1. Layers in the ShadowPay architecture
+## 1. Layers in a private payment aware architecture
 
-ShadowPay payment flows with HTTP 434 can be viewed as four cooperating layers.
+A typical architecture that uses HTTP 434 can be viewed in four layers.
 
 1. HTTP and application layer  
-   - Your REST or GraphQL API endpoints  
+   - REST or GraphQL endpoints  
    - HTTP status codes and JSON responses  
-   - Route level configuration for payment gating
+   - Route level flags that say whether a resource is payment protected
 
-2. ShadowPay integration layer  
-   - ShadowPay server client (for example `@shadowpay/server`)  
-   - ShadowPay schemas for invoices and escrows  
-   - Mapping between your business resources and ShadowPay payment entities
+2. Payment integration layer  
+   - Code that knows how to talk to a private payment system  
+   - Mapping between application resources and payment contexts  
+   - Handling of invoices, subscriptions, and entitlements
 
 3. Proof and verification layer  
-   - Groth16 circuits and verifying keys  
-   - Merkle tree commitments and nullifiers  
-   - Local proof generation in the client or agent  
-   - Server side proof verification
+   - Logic for generating and verifying private payment proofs  
+   - Management of commitment trees, nullifiers, or similar structures  
+   - Local verification or calls to an external verifier
 
-4. Solana and on chain state  
-   - Escrow PDAs and merchant accounts  
-   - Token transfers and deposits  
+4. Ledger or settlement layer  
+   - Underlying ledger such as a blockchain or traditional payment rail  
+   - Escrow accounts or balances that back the proofs  
    - Optional settlement and withdrawal flows
 
-HTTP 434 sits at layer 1 and gives a standard signal from layer 1 down into layers 2 and 3.
+HTTP 434 lives at layer 1. It is the signal from the HTTP layer that a private payment proof is required. The actual proof system and ledger details belong to layers 3 and 4 and are defined by protocol specific profiles.
 
 ---
 
-## 2. High level flow with 402 and 434
+## 2. Relationship between 402 and 434
 
-A typical ShadowPay integration for a paywalled endpoint looks like this.
+In a private payment system you can separate two phases:
 
-1. Client calls an API route that is ShadowPay protected.  
-2. Server checks for a valid ShadowPay proof on the request.  
-3. If no invoice or payment context exists, server may respond with `402 Payment Required` and include invoice information.  
-4. Client uses ShadowPay SDK to create or fund an invoice and possibly deposit funds into an escrow PDA on Solana.  
-5. Client uses ShadowPay SDK to generate a private payment proof for that invoice or escrow.  
-6. Client retries the original request and attaches the proof using ShadowPay headers or body fields.  
-7. If the proof is missing, server responds with `434 Private Payment Proof Required`.  
-8. If the proof is present but invalid, server responds with a more specific code such as `422` or `409`.  
-9. If the proof is valid, server processes the request and returns `2xx` success.
+1. Creating and funding a payment context  
+2. Presenting a private payment proof to access a resource
 
-You can think of 402 as the signal "start a payment session" and 434 as the signal "present the private payment proof".
-
-Some systems will use only 434 if invoices and payments are created entirely out of band.
-
----
-
-## 3. Where 434 lives in a request lifecycle
-
-For a given HTTP request, the lifecycle in a ShadowPay aware service usually looks like this:
-
-1. Routing  
-   - Incoming request is routed to a handler.  
-   - Handler or middleware marks the route as ShadowPay protected.
-
-2. Proof inspection  
-   - Middleware inspects `X-ShadowPay-*` headers and optionally JSON body.  
-   - If no proof and no waiver, middleware returns `434` with a description of what is required.  
-   - If proof fields exist, request proceeds to verification.
-
-3. Proof verification  
-   - Server side integration calls a ShadowPay verifier module or service.  
-   - Verifier decodes proof, nullifier, merkle root, invoice id, and scheme.  
-   - Verifier checks merkle root, verifies the Groth16 proof, checks nullifier uniqueness, and validates invoice state.  
-   - Verifier returns a structured result such as `OK`, `INVALID`, `DOUBLE_SPEND`, `TIMLOCK`, `ESCROW_LOCKED`.
-
-4. Decision  
-   - If result is `OK`, the request is allowed to proceed to business logic.  
-   - If result is not `OK`, the server maps the result into an HTTP status code:
-     - `INVALID` -> `422 Unprocessable Content`  
-     - `DOUBLE_SPEND` -> `409 Conflict`  
-     - `TIMLOCK` -> `425 Too Early`  
-     - `ESCROW_LOCKED` -> `423 Locked`  
-     - Other conditions -> `428 Precondition Required` or application specific errors.
-
-5. Business logic  
-   - Handler sees that payment is proven and can safely perform actions such as:
-     - Serving model outputs or content  
-     - Enqueuing jobs or tasks  
-     - Writing records  
-     - Emitting webhooks
-
-434 is therefore a gate at step 2 in this lifecycle.
-
----
-
-## 4. HTTP status code mapping in ShadowPay
-
-The ShadowPay profile uses the following status codes in a payment aware architecture.
+The two HTTP status codes map naturally to these phases:
 
 - `402 Payment Required`  
-  No invoice or payment session yet. Client must create or fund an invoice.
+  Means there is no suitable payment context yet. The client must create or fund one.
 
 - `434 Private Payment Proof Required`  
-  Payment system exists, but a private payment proof is missing from the request.
+  Means a suitable payment context exists but a private payment proof is missing or unusable for this request.
+
+A typical combined flow:
+
+1. Client calls a payment protected endpoint with no prior setup.  
+2. Server responds with `402` and describes how to create or fund a payment context.  
+3. Client uses a payment protocol to create and fund that context.  
+4. Client generates a private payment proof tied to that context.  
+5. Client retries the original request and attaches the proof.  
+6. Server either accepts the proof and returns `2xx` or rejects it with a more specific status such as `422` or `409`.
+
+Some deployments skip 402 entirely and use 434 alone when payment contexts are established out of band.
+
+---
+
+## 3. Request lifecycle with HTTP 434
+
+For a single HTTP request to a payment protected resource, the lifecycle usually looks like this:
+
+1. **Routing**  
+   - Request is matched to a handler.  
+   - Route metadata marks it as payment protected.
+
+2. **Proof inspection**  
+   - Middleware or filters inspect headers and optionally the body for proof material.  
+   - If proof is missing, server returns `434 Private Payment Proof Required` with a response body describing what is needed.  
+   - If proof is present, the request moves to verification.
+
+3. **Proof verification**  
+   - Server validates syntax and encoding of proof fields.  
+   - Server calls verification logic or an external verifier for cryptographic checks.  
+   - Server checks replay protection (for example nullifier reuse).  
+   - Server validates any additional conditions such as expiry or usage limits.
+
+4. **Decision and mapping**  
+   - If verification passes, the request is allowed to reach business logic.  
+   - If verification fails, the server maps the error into an HTTP status code such as:
+     - `422 Unprocessable Content` for invalid or malformed proofs  
+     - `409 Conflict` for double spend conditions  
+     - `423 Locked` for locked funds  
+     - `425 Too Early` for timelock conditions  
+     - `428 Precondition Required` for missing funding or similar
+
+5. **Business logic**  
+   - Handler executes application specific code with the knowledge that payment has been privately proven.  
+   - Handler may also log which payment context was used.
+
+HTTP 434 is the explicit gate at step 2 when a proof is required but not yet provided.
+
+---
+
+## 4. Status code taxonomy in a private payment system
+
+To keep behavior predictable, it is useful to reserve certain status codes for specific classes of payment related errors:
+
+- `402 Payment Required`  
+  No payment context yet. Client must initiate payment.
+
+- `434 Private Payment Proof Required`  
+  Payment context exists or is assumed to exist. Client must present a private payment proof.
 
 - `422 Unprocessable Content`  
-  Proof is malformed, incomplete, or fails cryptographic verification.
+  Proof was present but could not be processed or verified. For example wrong format or cryptographic failure.
 
 - `409 Conflict`  
-  Nullifier or invoice has already been used, indicating replay or double spend.
+  Proof indicates a state conflict, such as reuse of a nullifier or already consumed entitlement.
 
 - `423 Locked`  
-  Funds exist but cannot be used yet due to escrow or lock conditions.
+  Funds or entitlements exist but cannot be used yet due to a lock or hold.
 
 - `425 Too Early`  
-  Time based condition such as timelock or subscription window has not been reached.
+  Time based condition not yet satisfied. For example a timelock or subscription window.
 
 - `428 Precondition Required`  
-  Required pre payment step is missing, such as initial escrow funding.
+  A prerequisite step such as funding an escrow account has not been completed.
 
-This HTTP level taxonomy mirrors the internal ShadowPay state machine and makes private payment behavior visible to clients in a standard way.
-
----
-
-## 5. Integration points in a typical backend
-
-To add ShadowPay and 434 into an existing backend, you usually modify three main areas.
-
-1. Configuration  
-   - Mark which routes require ShadowPay payment.  
-   - Configure required schemes and currencies, for example `shadowpay_v1` and `USDC`.  
-   - Optionally configure mappings such as resource to invoice template.
-
-2. Middleware or filters  
-   - Add a middleware that checks for proof headers on protected routes.  
-   - Return `434` with a JSON body when proof is missing.  
-   - Call a verifier module when proof is present.
-
-3. Business logic hooks  
-   - Attach the verified invoice id and proof context to the request or context object.  
-   - Use that context for logging, metering, and audit.  
-   - Avoid mixing payment concerns into core business logic.
-
-This keeps payment concerns contained and allows you to adopt ShadowPay incrementally.
+This mapping keeps payment specific concerns visible at the HTTP level while allowing the underlying payment protocol to evolve.
 
 ---
 
-## 6. Interaction with Solana and on chain state
+## 5. Integration points in typical backends
 
-HTTP 434 itself is chain agnostic, but in the ShadowPay profile it is tightly aligned with Solana on chain state.
+To integrate HTTP 434 into an existing backend, most systems need to change three areas.
 
-- Escrow PDAs hold user funds for invoices or subscriptions.  
-- ShadowPay circuits commit to balances and deposits that live on Solana.  
-- Nullifiers are derived from commitments that are linked to on chain state, without exposing address level details.  
-- Verifier modules may query Solana RPC or an indexer to confirm that escrow accounts are funded or settled.
+1. **Configuration**  
+   - Define which routes are payment protected.  
+   - Attach configuration such as required payment scheme, currency, pricing model, or context mapping.
 
-The architecture keeps the boundaries clear:
+2. **Middleware or filters**  
+   - Implement a reusable component that:
+     - Checks for proof fields.  
+     - Returns `434` when proof is missing.  
+     - Invokes verification logic when proof is present.  
+     - Maps verification results to HTTP status codes.
 
-- HTTP 434 indicates missing proof at the API surface.  
-- ShadowPay verifier checks cryptographic proofs and nullifiers.  
-- Solana state is used to anchor those proofs in an objective ledger.
+3. **Handler context**  
+   - Attach verification results such as the payment context id to the request context.  
+   - Let business logic trust that payment has been proven without handling cryptography or ledger interaction directly.
+
+This separation allows teams to maintain payment logic independently from application features.
 
 ---
 
-## 7. Summary
+## 6. Example profile: ShadowPay on Solana
 
-In the ShadowPay architecture:
+The core 434 status code is protocol neutral. Concrete payment systems define their own profiles that specify how proofs and contexts are carried over HTTP.
 
-- `402` starts payment sessions when needed.  
-- `434` is the precise signal that a private payment proof must be attached.  
-- `409`, `422`, `423`, `425`, and `428` classify specific failure modes.  
-- ShadowPay SDKs and verifiers connect HTTP semantics to ZK proofs and Solana state.
+ShadowPay is one such profile for private payments on Solana. In the ShadowPay profile:
 
-This structure lets you plug ShadowPay into existing HTTP APIs with minimal changes while gaining a clear and standards friendly story for private payments on Solana.
+- Proofs are carried using headers such as:
+  - `X-ShadowPay-Proof`  
+  - `X-ShadowPay-Nullifier`  
+  - `X-ShadowPay-Merkle-Root`  
+  - `X-ShadowPay-Invoice-Id`  
+  - `X-ShadowPay-Escrow-Account`  
+  - `X-ShadowPay-Scheme`
+
+- A `434` response includes a JSON payload with fields like:
+  - `proof_type`, `payment_scheme`, `invoice_id`, `currency`, `amount`, and optional metadata.
+
+- Verification logic ties proofs to Solana escrow accounts and uses nullifiers to prevent replay.
+
+For details of the ShadowPay profile, see:
+
+- `specs/shadowpay-http-434-profile.md`  
+- The example implementations in the `examples/` directory
+
+These documents show how to apply the generic architecture described above to a concrete zero knowledge payment system while remaining compatible with the core semantics of HTTP 434.
