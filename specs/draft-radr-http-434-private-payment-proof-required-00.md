@@ -7,7 +7,7 @@ Expires: May 2026
           draft-radr-http-434-private-payment-proof-required-00
 
 
-Abstract
+**Abstract**
 
    This document defines the HTTP status code 434 (Private Payment Proof
    Required).  The 434 status code is used by servers that require a
@@ -20,8 +20,8 @@ Abstract
    code in the HTTP Status Code registry.
 
 
-Status of This Memo
-
+**Status of This Memo
+**
    This Internet Draft is submitted in full conformance with the
    provisions of BCP 78 and BCP 79.
 
@@ -37,13 +37,13 @@ Status of This Memo
    This Internet Draft will expire in May 2026.
 
 
-Copyright Notice
-
+**Copyright Notice
+**
    Copyright (c) 2025 IETF Trust and the persons identified as the
    document authors.  All rights reserved.
 
 
-1.  Introduction
+1.  **Introduction**
 
    Modern payment systems often use cryptographic protocols that
    separate payment proofs from traditional authentication and
@@ -68,7 +68,7 @@ Copyright Notice
    RFC 2119 and RFC 8174.
 
 
-2.  Terminology
+2.  **Terminology**
 
    This document uses the terminology defined in RFC 9110 for HTTP
    semantics.
@@ -95,7 +95,7 @@ Copyright Notice
       payment requirement.
 
 
-3.  The 434 Private Payment Proof Required Status Code
+3.  **The 434 Private Payment Proof Required Status Code**
 
 3.1.  Semantics
 
@@ -139,7 +139,7 @@ Copyright Notice
       funds are released from escrow.
 
 
-4.  Response Content
+4.  **Response Content**
 
    A server that sends a 434 response SHOULD provide a representation
    that explains what is required in order for the request to succeed.
@@ -169,7 +169,7 @@ Copyright Notice
    be logged or exposed.
 
 
-5.  Relationship to Other Status Codes
+5.  **Relationship to Other Status Codes**
 
    The 434 code is intended to complement status code 402 (Payment
    Required) rather than replace it.
@@ -202,7 +202,7 @@ Copyright Notice
    error in the 4xx class, which is acceptable under HTTP semantics.
 
 
-6.  Client Behavior
+6.  **Client Behavior**
 
    A client that understands 434 and that supports the relevant private
    payment system SHOULD, upon receiving a 434 response:
@@ -224,7 +224,7 @@ Copyright Notice
    without user input or suitable application logic.
 
 
-7.  Security Considerations
+7.  **Security Considerations**
 
    Applications that use 434 rely on the security of the underlying
    private payment system.  Implementers MUST ensure that proof
@@ -239,7 +239,7 @@ Copyright Notice
    responding to a 434 status.
 
 
-8.  Privacy Considerations
+8.  **Privacy Considerations**
 
    The purpose of 434 is to support systems that can enforce payment
    without exposing payer identity or amounts.  This can improve privacy
@@ -251,7 +251,7 @@ Copyright Notice
    payment proofs as sensitive.
 
 
-9.  IANA Considerations
+9.  **IANA Considerations**
 
    IANA is requested to register the following in the "HTTP Status
    Codes" registry.
@@ -263,7 +263,7 @@ Copyright Notice
    Reference: This document
 
 
-10.  References
+10. ** References**
 
 10.1.  Normative References
 
