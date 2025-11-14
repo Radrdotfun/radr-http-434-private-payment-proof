@@ -21,8 +21,6 @@ This repo contains:
 
 Work in progress proposal, not an IETF standard.
 
-The main spec is written in Internet Draft format so it can be turned into a draft and submitted if needed.
-
 ---
 
 ## Layout
