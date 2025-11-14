@@ -1,284 +1,285 @@
-Internet Draft                                             Radr / ShadowPay
-Intended status: Informational                                  November 2025
-Expires: May 2026
+Internet-Draft: draft-radr-http-434-private-payment-proof-required-00  
+Intended status: Informational  
+Expires: May 2026  
 
+# The 434 (Private Payment Proof Required) HTTP Status Code
 
-           The 434 (Private Payment Proof Required) HTTP Status Code
-          draft-radr-http-434-private-payment-proof-required-00
+Author: Radr / ShadowPay  
 
+---
 
-**Abstract**
+## Abstract
 
-   This document defines the HTTP status code 434 (Private Payment Proof
-   Required).  The 434 status code is used by servers that require a
-   privacy preserving payment proof before processing a request.
+This document defines the HTTP status code `434 Private Payment Proof Required`.
 
-   The status code is suitable for payment systems that use zero
-   knowledge proofs, encrypted amounts, and commitment based accounting.
-   The document describes semantics, typical use cases, and guidance for
-   clients and servers.  It also requests registration of the 434 status
-   code in the HTTP Status Code registry.
+The 434 status code is used by servers that require a privacy preserving payment
+proof before processing a request. It is intended for payment systems that use
+zero knowledge proofs, encrypted amounts, and commitment based accounting.
 
+The document describes semantics, typical use cases, and guidance for clients
+and servers. It also requests registration of the 434 status code in the HTTP
+Status Code registry.
 
-**Status of This Memo
-**
-   This Internet Draft is submitted in full conformance with the
-   provisions of BCP 78 and BCP 79.
+---
 
-   Internet Drafts are working documents of the Internet Engineering
-   Task Force (IETF).  Other groups may also distribute working
-   documents as Internet Drafts.
+## Status of This Memo
 
-   An Internet Draft is valid for a maximum of six months and may be
-   updated, replaced, or obsoleted by other documents at any time.  It
-   is inappropriate to use Internet Drafts as reference material or to
-   cite them other than as work in progress.
+This Internet Draft is submitted in full conformance with the provisions of
+BCP 78 and BCP 79.
 
-   This Internet Draft will expire in May 2026.
+Internet Drafts are working documents of the Internet Engineering Task Force
+(IETF). Other groups may also distribute working documents as Internet Drafts.
 
+An Internet Draft is valid for a maximum of six months and may be updated,
+replaced, or obsoleted by other documents at any time. It is inappropriate to
+use Internet Drafts as reference material or to cite them other than as work in
+progress.
 
-**Copyright Notice
-**
-   Copyright (c) 2025 IETF Trust and the persons identified as the
-   document authors.  All rights reserved.
+This Internet Draft will expire in May 2026.
 
+---
 
-1.  **Introduction**
+## Copyright Notice
 
-   Modern payment systems often use cryptographic protocols that
-   separate payment proofs from traditional authentication and
-   authorization.  In privacy preserving designs the server may require
-   a proof that a payment or entitlement exists while avoiding exposure
-   of payer identity or unencrypted amounts.
+Copyright (c) 2025 IETF Trust and the persons identified as the document
+authors. All rights reserved.
 
-   HTTP status code 402 (Payment Required) indicates that a payment is
-   required but provides no semantics for systems that use private
-   payment proofs.  Application designers need a way to signal that a
-   request is blocked specifically because a private payment proof is
-   missing.
+---
 
-   This document defines a new HTTP status code in the 4xx class named
-   "434 Private Payment Proof Required".  The code is intended for
-   systems that rely on zero knowledge proofs or similar schemes to
-   enforce payment policies.
+## 1. Introduction
 
-   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
-   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
-   "OPTIONAL" in this document are to be interpreted as described in
-   RFC 2119 and RFC 8174.
+Modern payment systems often use cryptographic protocols that separate payment
+proofs from traditional authentication and authorization.
 
+In privacy preserving designs, the server may require a proof that a payment or
+entitlement exists while avoiding exposure of payer identity or unencrypted
+amounts.
 
-2.  **Terminology**
+HTTP status code `402 Payment Required` signals that payment is needed but does
+not provide semantics for systems that rely on private payment proofs. There is
+no standard HTTP status code that says the request failed specifically because
+a private payment proof is missing.
 
-   This document uses the terminology defined in RFC 9110 for HTTP
-   semantics.
+This document defines a new HTTP status code in the 4xx class named
+`434 Private Payment Proof Required`. The code is intended for systems that
+rely on zero knowledge proofs or similar schemes to enforce payment policies
+while preserving privacy.
 
-   The following additional terms are used:
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in RFC 2119 and RFC 8174.
 
-   Private payment system
-      A payment system that uses techniques such as zero knowledge
-      proofs, encrypted amounts, commitment schemes, and nullifiers to
-      hide payer identity and raw amounts while still allowing
-      verification.
+---
 
-   Payment proof
-      A cryptographic proof that demonstrates that a valid payment,
-      entitlement, or balance exists according to the rules of a private
-      payment system.
+## 2. Terminology
 
-   Client
-      An HTTP user agent that understands this status code and knows how
-      to construct or attach a private payment proof.
+This document uses the terminology defined in RFC 9110 for HTTP semantics.
 
-   Server
-      An HTTP origin server or intermediary that enforces a private
-      payment requirement.
+The following additional terms are used:
 
+- Private payment system  
+  A payment system that uses techniques such as zero knowledge proofs,
+  encrypted amounts, commitment schemes, and nullifiers to hide payer identity
+  and raw amounts while still allowing verification.
 
-3.  **The 434 Private Payment Proof Required Status Code**
+- Payment proof  
+  A cryptographic proof that demonstrates that a valid payment, entitlement, or
+  balance exists according to the rules of a private payment system.
 
-3.1.  Semantics
+- Proof presentation  
+  The act of attaching a payment proof to an HTTP request using headers or
+  message content so that the server can verify it.
 
-   The 434 (Private Payment Proof Required) status code indicates that:
+---
 
-   *  The server understood the request and the request is syntactically
-      correct.
+## 3. The 434 Private Payment Proof Required Status Code
 
-   *  The requested resource is protected by a payment requirement that
-      is enforced using a private payment system.
+### 3.1. Semantics
 
-   *  The server did not receive a valid private payment proof attached
-      to the request.
+The `434 Private Payment Proof Required` status code indicates that:
 
-   *  The client is expected to supply such a proof before the request
-      can be processed successfully.
+1. The server understood the request.  
+2. The target resource is protected by a payment requirement that is enforced
+   by a private payment system.  
+3. The request did not include a valid payment proof in the format expected by
+   that system.  
+4. The client is expected to obtain or generate such a proof and then retry
+   the request.
+
+The status code does not specify a particular payment protocol or proof system.
+It only communicates that a private payment proof is required and missing.
+
+Servers generating a `434` response SHOULD provide a representation containing
+information that enables the client to understand how to satisfy the payment
+requirement. This representation SHOULD be machine readable and SHOULD include
+fields such as:
+
+- A description of the payment scheme and version.  
+- An identifier of the invoice, entitlement, or payment session.  
+- An indication that the payment amount is encrypted or otherwise not exposed.  
+- Optional non sensitive metadata that helps the client decide how to proceed.
+
+### 3.2. Use with 402 Payment Required
+
+The 434 status code complements, but does not replace, the existing
+`402 Payment Required` status code.
+
+A server MAY use both codes in the following way:
+
+- Use `402 Payment Required` when there is no payment session or invoice yet
+  and the client must initiate a payment.  
+- Use `434 Private Payment Proof Required` when a payment context already
+  exists and the missing element is a cryptographic payment proof.
 
-   The server is unwilling to process the request further until a
-   suitable private payment proof is presented.  The server may include
-   information in the response content that describes the required proof
-   and how the client should obtain or construct it.
+A typical flow is:
+
+1. Client requests a protected resource without any payment context.  
+2. Server responds with `402 Payment Required` and a description of how to
+   create or fund an invoice.  
+3. Client completes payment using the relevant payment system.  
+4. Client generates a payment proof bound to that invoice.  
+5. Client retries the original request, attaching the proof.  
+6. If the proof is missing or malformed, server responds with `434`.  
+7. If the proof is valid, server processes the request and returns a success
+   status code (for example `200 OK` or `201 Created`).
+
+Some deployments MAY choose to use only `434` if invoices and payments are
+created entirely out of band.
+
+---
+
+## 4. Client and Server Requirements
+
+### 4.1. Client behavior
+
+A client that understands 434 and participates in a private payment system
+SHOULD:
 
+1. Detect responses with HTTP status code 434.  
+2. Parse the response body into a structured form that includes at least:
+   - payment scheme identifier  
+   - invoice or session identifier  
+   - optional metadata  
 
-3.2.  Use Cases
+3. Decide according to policy or user consent whether it is acceptable to pay
+   for the requested resource.  
+4. If payment is acceptable, use the relevant payment system to:
+   - ensure that a valid payment exists for the given invoice or session  
+   - generate a private payment proof bound to that context  
 
-   The 434 status code is intended for use in systems where payment is
-   enforced using cryptographic proofs rather than traditional account
-   checks.  Examples include:
+5. Retry the original request, attaching the proof using protocol specific
+   headers or message fields.  
+6. Interpret any follow up response, including the case where proof
+   verification fails.
 
-   *  An API endpoint that charges per request and that verifies a zero
-      knowledge proof over an escrow balance.
+Clients SHOULD avoid automatically paying for arbitrary resources without
+explicit configuration or user consent.
 
-   *  A subscription service that requires a proof that the current
-      billing period has been paid without revealing subscriber
-      identity.
+A client that does not understand 434 will treat it as a generic 4xx status
+code and is not required to perform any special behavior.
 
-   *  A content delivery endpoint that is unlocked only when a payment
-      proof shows that a related invoice has been paid.
+### 4.2. Server behavior
 
-   *  A withdrawal endpoint that requires a proof of entitlement before
-      funds are released from escrow.
+A server that implements 434 MUST:
 
+1. Only emit 434 when the sole remaining reason for request failure is the
+   absence or invalidity of a private payment proof.  
+2. Clearly indicate in the response body that a private payment proof is
+   required and provide enough information to identify the relevant payment
+   scheme and context.  
+3. Verify any proofs provided in follow up requests using the rules of the
+   underlying payment system.  
+4. Map proof verification failures into appropriate HTTP status codes,
+   which MAY include:
+   - `422 Unprocessable Content` for malformed or cryptographically invalid
+     proofs.  
+   - `409 Conflict` for reused nullifiers or other double spend indicators.  
+   - `423 Locked` when funds exist but are temporarily locked.  
+   - `425 Too Early` when time based conditions are not yet satisfied.  
+   - `428 Precondition Required` when a required payment precondition such as
+     escrow funding has not been met.
 
-4.  **Response Content**
+A server MAY use 434 in combination with other access control mechanisms such
+as authentication and authorization. In such cases:
 
-   A server that sends a 434 response SHOULD provide a representation
-   that explains what is required in order for the request to succeed.
+- Authentication failures SHOULD continue to use codes such as `401`.  
+- Authorization failures that are not related to payment SHOULD continue to
+  use codes such as `403`.  
+- 434 SHOULD be reserved for cases where lack of a valid private payment proof
+  is the relevant condition.
 
-   JSON is a common representation format.  The following is an example
-   response body:
+---
 
-   {
-     "status": 434,
-     "title": "Private Payment Proof Required",
-     "detail": "This endpoint requires a valid private payment proof.",
-     "proof_type": "groth16",
-     "payment_scheme": "shadowpay_v1",
-     "invoice_id": "inv_abc123",
-     "currency": "USDC",
-     "amount": "encrypted",
-     "metadata": {
-       "resource": "/v1/chat",
-       "plan": "pro",
-       "interval": "monthly"
-     }
-   }
+## 5. IANA Considerations
 
-   Fields such as "proof_type", "payment_scheme" and "invoice_id" are
-   application specific hints.  Servers SHOULD avoid including clear
-   text payer identity or exact amounts in responses that are likely to
-   be logged or exposed.
+This document requests that IANA register the following HTTP status code in the
+"HTTP Status Code Registry":
 
+- Code: 434  
+- Short Description: Private Payment Proof Required  
+- Reference: this document
 
-5.  **Relationship to Other Status Codes**
+---
 
-   The 434 code is intended to complement status code 402 (Payment
-   Required) rather than replace it.
+## 6. Security Considerations
 
-   A server MAY respond with 402 when no payment session or invoice is
-   associated with the request and the client needs to initiate a
-   payment process.
+The 434 status code itself does not introduce new security mechanisms. It
+standardizes how existing private payment systems interact with HTTP.
 
-   A server MAY respond with 434 when a payment system is already in
-   place and the missing element is a private payment proof.
+However, deployments must consider the following:
 
-   Systems that use 434 will commonly also use:
+- Privacy leakage  
+  Servers SHOULD avoid including clear text payer identities or amounts in
+  434 responses. Fields that describe the payment requirement SHOULD be
+  limited to non sensitive identifiers and metadata.
 
-   *  409 (Conflict) when a nullifier or unique payment reference has
-      already been used.
+- Proof reuse and replay  
+  Private payment systems that use nullifiers or similar constructs MUST
+  ensure that replayed proofs are detectable and rejected. Servers SHOULD map
+  such events to a distinct status code such as `409 Conflict`.
 
-   *  422 (Unprocessable Content) when an attached proof is malformed or
-      fails cryptographic verification.
+- Denial of service  
+  Proof verification is often more expensive than normal request processing.
+  Servers SHOULD implement rate limiting, resource accounting, or other
+  controls to avoid being overloaded by proof verification attempts.
 
-   *  423 (Locked) when funds exist but are locked under conditions that
-      prevent use.
+- Mixed content  
+  When using 434 in web contexts, implementers SHOULD ensure that payment
+  flows and proof submission use secure transport. HTTP over TLS is strongly
+  RECOMMENDED.
 
-   *  425 (Too Early) when a time based condition such as a timelock is
-      not yet satisfied.
+The use of 434 does not weaken or replace existing security requirements for
+authentication, authorization, or transport.
 
-   *  428 (Precondition Required) when a required pre payment step is
-      missing.
+---
 
-   Clients that do not understand 434 will treat it as a generic client
-   error in the 4xx class, which is acceptable under HTTP semantics.
+## 7. References
 
+### 7.1. Normative References
 
-6.  **Client Behavior**
+- RFC 2119  
+  Key words for use in RFCs to indicate requirement levels.
 
-   A client that understands 434 and that supports the relevant private
-   payment system SHOULD, upon receiving a 434 response:
+- RFC 8174  
+  Clarification of the usage of key words for requirement levels.
 
-   1.  Inspect the response content for information about the required
-       proof, such as invoice identifiers, payment schemes, or proof
-       types.
+- RFC 9110  
+  HTTP Semantics.
 
-   2.  Ensure that an appropriate payment has been made or that
-       sufficient funds exist in the corresponding system.
+### 7.2. Informative References
 
-   3.  Construct a private payment proof that satisfies the server
-       policy.
+- RFC 7231  
+  Hypertext Transfer Protocol version 1.1 semantics and content.
 
-   4.  Repeat the original request and attach the proof in a manner
-       defined by the payment system and by the application protocol.
+- Relevant private payment system specifications as deployed by specific
+  implementations.
 
-   Clients SHOULD avoid blindly retrying requests that result in 434
-   without user input or suitable application logic.
+---
 
+## 8. Acknowledgements
 
-7.  **Security Considerations**
+This draft was inspired by work on private payments and zero knowledge proof
+based payment rails, including deployment experience with ShadowPay on Solana.
 
-   Applications that use 434 rely on the security of the underlying
-   private payment system.  Implementers MUST ensure that proof
-   verification uses correct parameters and verifying keys and that
-   uniqueness conditions such as nullifiers are enforced.
-
-   Servers SHOULD avoid including sensitive payment data in 434
-   responses or logs.  In particular, servers SHOULD NOT log full proofs
-   or cryptographic secrets.
-
-   Clients MUST NOT send private keys or other sensitive secrets when
-   responding to a 434 status.
-
-
-8.  **Privacy Considerations**
-
-   The purpose of 434 is to support systems that can enforce payment
-   without exposing payer identity or amounts.  This can improve privacy
-   relative to traditional account based models.
-
-   However, response content may still contain identifiers that can be
-   used for correlation.  Implementers SHOULD consider minimising the
-   information included in 434 responses and SHOULD treat logs involving
-   payment proofs as sensitive.
-
-
-9.  **IANA Considerations**
-
-   IANA is requested to register the following in the "HTTP Status
-   Codes" registry.
-
-   Value: 434
-
-   Description: Private Payment Proof Required
-
-   Reference: This document
-
-
-10. ** References**
-
-10.1.  Normative References
-
-   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
-              Requirement Levels", BCP 14, RFC 2119, March 1997.
-
-   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
-              2119 Key Words", BCP 14, RFC 8174, May 2017.
-
-   [RFC9110]  Fielding, R., Nottingham, M., and J. Reschke, "HTTP
-              Semantics", RFC 9110, June 2022.
-
-
-Authors' Addresses
-
-   ShadowPay Engineering
-   Radr
-   Email: Hello@radr.fun
+The authors thank reviewers and implementers who provided feedback on early
+versions of this document.
