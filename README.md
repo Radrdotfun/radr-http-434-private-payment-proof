@@ -1,4 +1,4 @@
-**HTTP 434 Private Payment Proof Required
+# HTTP 434 Private Payment Proof Required
 
 Specification and reference examples for the proposed HTTP status code:
 
