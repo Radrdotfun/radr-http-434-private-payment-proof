@@ -1,131 +1,160 @@
-# Client behavior for HTTP 434 with ShadowPay
+# Client behavior for HTTP 434 Private Payment Proof Required
 
-This document describes how HTTP clients and SDKs should behave when they receive `434 Private Payment Proof Required` from a ShadowPay aware server.
+This document describes how HTTP clients and SDKs should behave when they receive
+`434 Private Payment Proof Required` responses, with a focus on the ShadowPay
+profile.
 
 The goal is:
 
-- Make behavior predictable for all ShadowPay clients.  
-- Keep cryptographic and on chain details inside the ShadowPay SDK.  
-- Let application developers work only with HTTP status codes and high level SDK calls.
+- Make client behavior predictable and easy to implement  
+- Keep cryptographic and on chain details inside ShadowPay SDKs  
+- Let application code work in terms of HTTP status codes and high level calls  
 
 ---
 
-## 1. Detection and parsing
+## 1. Scope
 
-A ShadowPay aware client MUST detect HTTP status code `434` and SHOULD parse the response body.
+This guide covers:
 
-Typical detection patterns:
+- Generic behavior for any client that understands HTTP 434  
+- ShadowPay specific behavior when 434 is used with the ShadowPay profile  
+- Error handling and mapping of follow up responses  
 
-- JavaScript: `if (response.status === 434)`  
-- Python requests: `if resp.status_code == 434`  
-- Rust reqwest: `if resp.status() == 434`  
-- Go net/http: `if resp.StatusCode == 434`  
+It does not define the 434 status code itself. That is done in the core 434
+specification. It also does not define ShadowPay cryptography; that is handled
+by ShadowPay protocol documentation and SDKs.
 
-After detection, the client SHOULD parse the response body as JSON and map it into a structure such as:
+---
 
-    interface ShadowPayRequirement {
-      status: number;            // should be 434
-      title?: string;
-      detail?: string;
-      proof_type?: string;
-      payment_scheme?: string;
-      invoice_id?: string;
-      currency?: string;
-      amount?: string;
-      escrow_account?: string;
-      metadata?: Record<string, unknown>;
+## 2. Generic client behavior for HTTP 434
+
+Any client that understands 434, independent of ShadowPay, SHOULD follow this
+pattern.
+
+1. Detect `434 Private Payment Proof Required`.  
+2. Parse the response body to extract:
+   - payment scheme identifier  
+   - payment context identifier (for example invoice or session id)  
+   - optional metadata about the resource or plan  
+
+3. Decide whether the client is allowed to pay for this resource:
+   - check application configuration  
+   - check user consent or policy  
+   - check spending limits  
+
+4. If paying is allowed:
+   - use the relevant private payment system to make sure a valid payment
+     exists for the given context  
+   - generate a private payment proof linked to that context  
+
+5. Retry the original request, attaching the proof in headers or body fields
+   defined by the payment system.
+
+6. Interpret the new response:
+   - `2xx` means success and the resource is available  
+   - `4xx` codes such as `422`, `409`, `423`, `425`, `428` indicate specific
+     proof or payment issues  
+   - another `434` usually means a configuration or integration problem  
+
+Clients that do not understand 434 treat it as a generic 4xx error.
+
+---
+
+## 3. ShadowPay specific behavior
+
+When the response is produced by a ShadowPay aware server using the ShadowPay
+profile, clients and SDKs SHOULD follow the ShadowPay specific rules in this
+section.
+
+### 3.1. Detecting ShadowPay 434 responses
+
+A 434 response can come from any private payment system. To decide whether to
+use ShadowPay, a client SHOULD inspect the response body fields.
+
+Common patterns that indicate a ShadowPay profile:
+
+- `payment_scheme` field contains a value such as `shadowpay_v1`  
+- Additional fields like `invoice_id`, `currency`, `amount`, and
+  `escrow_account` match ShadowPay conventions  
+- Documentation for the endpoint states that it uses ShadowPay  
+
+Typical response body:
+
+    {
+      "status": 434,
+      "title": "Private Payment Proof Required",
+      "detail": "This endpoint requires a valid ShadowPay payment proof.",
+      "proof_type": "groth16",
+      "payment_scheme": "shadowpay_v1",
+      "invoice_id": "inv_abc123",
+      "currency": "USDC",
+      "amount": "encrypted",
+      "escrow_account": "EscrowPDA1111111111111111111111111111111",
+      "metadata": {
+        "resource": "/v1/chat",
+        "plan": "pro",
+        "interval": "monthly"
+      }
     }
 
-Clients SHOULD tolerate missing optional fields and default `payment_scheme` to `shadowpay_v1` if it is not present.
+If `payment_scheme` matches a ShadowPay scheme that the client supports, the
+client SHOULD route handling to a ShadowPay SDK.
 
----
+### 3.2. Decision to pay
 
-## 2. Decision: whether to pay and prove
-
-Receiving `434` does not mean the client must always pay. The client or SDK MUST decide according to application rules whether it is appropriate to satisfy the requirement.
+Before engaging ShadowPay, a client SHOULD decide whether payment is allowed.
 
 Inputs into this decision:
 
-- Application configuration or policy.  
-- User consent settings.  
-- Allow lists or deny lists of hosts, paths, and methods.  
-- Spending limits such as maximum invoice amount or per day caps.  
+- Allow lists of hosts and paths that are allowed to trigger ShadowPay  
+- Maximum price or spend per operation or per day  
+- User consent or configuration for subscriptions and one shot payments  
+- Application specific rules such as required scopes or plans  
 
-Typical patterns:
+A typical pattern:
 
-- Interactive application: prompt the user before starting the ShadowPay flow.  
-- Headless agent: obey a configuration file that specifies which endpoints can trigger ShadowPay payments.  
-- Backend service: use static configuration and environment variables to decide which resources are allowed to be paid.
+- Back office or CLI tools ask for explicit user confirmation  
+- Agents and services follow a policy configuration file  
+- Browser and mobile apps store user settings for each domain  
 
-If the client decides not to satisfy the 434 requirement it SHOULD:
+If payment is not allowed, the client SHOULD:
 
-- Not retry automatically.  
-- Surface an error that includes the status code and the `detail` field from the response body.
+- Not retry automatically  
+- Surface an error containing the 434 status and the `detail` text  
 
----
+### 3.3. Interaction with ShadowPay SDKs
 
-## 3. Integration with the ShadowPay SDK
+Once the client decides that paying is acceptable, it SHOULD delegate to a
+ShadowPay SDK. ShadowPay SDKs are expected to provide helpers that:
 
-A ShadowPay client SHOULD delegate most work to a ShadowPay SDK.
+- Look up or create invoices  
+- Confirm that payments exist or are pending  
+- Generate Groth16 proofs with the correct merkle root and nullifier  
+- Return the header values that must be attached to the retry request  
 
-High level algorithm:
+A typical high level flow in pseudocode:
 
-1. Detect status `434`.  
-2. Parse the JSON response into a `ShadowPayRequirement`.  
-3. Pass the requirement and original request context into a helper provided by the SDK.
-
-For example in TypeScript:
-
-    const requirement = await response.json() as ShadowPayRequirement;
-
-    const result = await shadowpay.handleRequirement({
-      requirement,
-      originalRequest: {
-        method,
-        url,
-        headers,
-        body
-      }
+    const requirement = await resp.json(); // 434 response body
+    
+    const decision = await shadowpay.decide({
+      scheme: requirement.payment_scheme,
+      invoiceId: requirement.invoice_id,
+      currency: requirement.currency,
+      metadata: requirement.metadata
     });
-
-    if (!result.shouldRetry) {
-      throw new Error("ShadowPay requirement not satisfied");
+    
+    if (!decision.shouldPay) {
+      throw new Error("ShadowPay payment not allowed for this request");
     }
-
-    const retriedResponse = await fetch(url, result.updatedRequestInit);
-
-The SDK is responsible for:
-
-- Locating or creating a ShadowPay invoice that matches `invoice_id` or the metadata.  
-- Ensuring that a payment exists for this invoice and scheme.  
-- Generating a Groth16 proof, a merkle root, and a nullifier.  
-- Constructing updated headers and body fields for the retry.
-
-This keeps application code focused on control flow rather than cryptography.
-
----
-
-## 4. Attaching ShadowPay proof material
-
-When retrying the original request after satisfying the payment requirement, the client MUST attach ShadowPay proof material using the headers defined in the ShadowPay profile.
-
-Typical header set:
-
-- `X-ShadowPay-Proof`  
-- `X-ShadowPay-Nullifier`  
-- `X-ShadowPay-Merkle-Root`  
-- `X-ShadowPay-Invoice-Id`  
-- `X-ShadowPay-Escrow-Account` (if escrow is used)  
-- `X-ShadowPay-Scheme`  
-
-Example in JavaScript:
-
+    
     const proof = await shadowpay.generateProof({
       invoiceId: requirement.invoice_id,
-      scheme: requirement.payment_scheme ?? "shadowpay_v1"
+      escrowAccount: requirement.escrow_account,
+      scheme: requirement.payment_scheme
     });
-
-    const retriedResponse = await fetch(originalUrl, {
+    
+    // Retry with proof attached
+    const retried = await fetch(originalUrl, {
       method: originalMethod,
       headers: {
         ...originalHeaders,
@@ -139,73 +168,125 @@ Example in JavaScript:
       body: originalBody
     });
 
-The precise API will differ by SDK and language. The pattern is fixed:
+Application code SHOULD treat the ShadowPay SDK as the main entry point for all
+cryptographic and on chain operations.
 
-434 received -> generate proof with ShadowPay -> retry with proof attached.
+---
+
+## 4. Required ShadowPay headers on retry
+
+When retrying a request after satisfying a ShadowPay 434 requirement, the client
+MUST attach proof material using the header fields defined by the ShadowPay
+profile.
+
+Standard headers:
+
+- `X-ShadowPay-Proof`  
+  Base64 encoded Groth16 proof.
+
+- `X-ShadowPay-Nullifier`  
+  Encoded nullifier that the verifier will record and check for reuse.
+
+- `X-ShadowPay-Merkle-Root`  
+  Hex encoded merkle root used when generating the proof.
+
+- `X-ShadowPay-Invoice-Id`  
+  ShadowPay invoice or payment session identifier.
+
+- `X-ShadowPay-Escrow-Account`  
+  Optional. Solana escrow account if the scheme uses escrow.
+
+- `X-ShadowPay-Scheme`  
+  Logical scheme or version name such as `shadowpay_v1`.
+
+Clients SHOULD treat these headers as sensitive and avoid logging them by
+default.
 
 ---
 
 ## 5. Handling follow up responses
 
-After the retry with proof, the client MUST inspect the new response status code and act accordingly.
-
-Suggested mapping:
+After retrying a request with ShadowPay proof headers, the client must interpret
+the follow up status code. The mapping below assumes a ShadowPay aware server.
 
 - `2xx`  
-  Treat as success. Return the response body to the caller. The payment and proof are considered accepted.
+  Proof accepted and request processed. The client can treat this as success.
 
 - `434` again  
-  Treat as a configuration or flow error. The server still believes that a proof is missing or unsuitable. The client SHOULD log this and surface an error instead of looping indefinitely.
+  Server still believes proof is missing or unusable. This usually indicates a
+  configuration or integration issue, for example:
+  - proof headers not attached correctly  
+  - reverse proxy stripping custom headers  
+  - server has not enabled ShadowPay middleware on this route  
+
+  The client SHOULD log enough information for debugging and surface an error
+  rather than looping.
 
 - `422 Unprocessable Content`  
-  The proof was malformed or failed cryptographic verification. The client SHOULD:
-  - Log the error code and any diagnostic reason field in the response.  
-  - Optionally attempt a single regeneration of the proof if a transient mismatch is suspected.  
-  - Fail fast if repeated 422 responses occur.
+  Proof was present but invalid or malformed. Possible reasons:
+  - base64 or encoding errors  
+  - merkle root not recognized  
+  - Groth16 verification failure  
+  - invoice id or scheme mismatch  
+
+  The client MAY attempt a single regeneration if the error appears transient,
+  but repeated `422` responses SHOULD be treated as a configuration problem that
+  needs developer attention.
 
 - `409 Conflict`  
-  The nullifier or invoice was already used. This strongly suggests a replay, double spend attempt, or misuse of the same proof. The client MUST NOT retry with the same proof and SHOULD surface a hard error.
+  Nullifier or payment reference already used. This indicates a replay or double
+  spend attempt or a bug in proof reuse. Clients MUST NOT retry with the same
+  proof and SHOULD surface a hard error.
 
 - `423 Locked`  
-  Funds are locked in escrow or are otherwise temporarily unavailable. The client MAY implement a backoff and retry strategy if the response body communicates a clear unlock condition, otherwise it SHOULD surface an error.
+  Funds or entitlements exist but are locked. The client MAY support delayed
+  retry strategies if the response body includes information about unlock
+  conditions, otherwise it SHOULD treat this as an error.
 
 - `425 Too Early`  
-  A time based condition is not yet satisfied, for example a timelock or subscription epoch. The client MAY:
-  - Use metadata in the body to schedule a retry after a given time.  
-  - Or simply return an error to the caller.
+  Time based condition not satisfied, for example a timelock or subscription
+  start time. Clients MAY:
+  - read a suggested retry time from the response body  
+  - schedule a follow up call  
+  - or surface an error  
 
 - `428 Precondition Required`  
-  A pre payment step is missing, such as initial funding of escrow. The client SHOULD treat this as a signal that the ShadowPay configuration is incomplete and surface an error.
+  Indicates that an upstream precondition such as escrow funding or plan
+  activation is missing. Clients SHOULD treat this as a configuration or setup
+  issue rather than repeatedly retrying the same request.
 
-The ShadowPay SDK MAY provide high level helpers that map these status codes into typed errors or result variants for easier handling.
+ShadowPay SDKs SHOULD expose these as structured error types or result variants
+so that application code does not work directly with raw status codes.
 
 ---
 
-## 6. Error handling and observability
+## 6. Behavior in non ShadowPay contexts
 
-ShadowPay aware clients SHOULD:
+If a client supports multiple private payment systems, it MUST treat 434 as a
+generic signal initially and then route to the correct profile based on the
+response body and configuration.
 
-- Log occurrences of 434 and the endpoint URLs involved.  
-- Log 409, 422, 423, 425, and 428 responses with enough context to debug but without printing full proofs or secrets.  
-- Track metrics such as:
-  - Count of 434 responses per endpoint.  
-  - Ratio of 434 to successful payment based calls.  
-  - Count of 422 proof failures for a given SDK version.
+If a 434 response does not match any known profile:
 
-Such metrics help operators detect integration issues, mismatched versions, or misuse of the protocol.
+- The client SHOULD treat it as an unsupported payment scheme.  
+- The client SHOULD surface an error with the status code and `detail` field.  
+- The client SHOULD NOT attempt ShadowPay proof generation when the scheme does
+  not match a known ShadowPay value.
+
+This prevents accidental mixing of protocols.
 
 ---
 
 ## 7. Behavior for clients without ShadowPay support
 
-Clients that do not implement ShadowPay specific logic will see 434 as a generic 4xx client error.
+Clients that are not ShadowPay aware simply see `434` as another 4xx error:
 
-For those clients:
+- They do not parse or act on `payment_scheme` or `invoice_id`.  
+- They do not attempt to generate or attach ShadowPay proofs.  
+- They surface the error according to normal application rules.
 
-- The correct behavior is to surface an error and not retry.  
-- Application developers who want private payment support must adopt a ShadowPay aware SDK or implement the patterns described here.
-
-This is acceptable because HTTP status codes are explicitly extensible in the 4xx range and unknown codes are treated as general client errors.
+This is acceptable because HTTP status code space is explicitly extensible and
+unknown 4xx codes are treated as client errors.
 
 ---
 
@@ -213,13 +294,15 @@ This is acceptable because HTTP status codes are explicitly extensible in the 4x
 
 For ShadowPay aware clients:
 
-- 434 is the signal that a private payment proof is required.  
-- The ShadowPay SDK should own invoice lookup, payment checks, and proof generation.  
-- The client logic is:
-  - detect 434  
-  - decide whether to pay  
-  - call ShadowPay SDK  
-  - retry with proof  
-  - interpret follow up status codes
+- 434 is the signal that a ShadowPay payment proof is required.  
+- The response body tells the client which scheme and context to use.  
+- The ShadowPay SDK owns invoices, payments, proofs, and headers.  
+- Application code:
+  - detects 434  
+  - decides whether to pay  
+  - calls the SDK  
+  - retries with proof  
+  - interprets follow up status codes  
 
-This keeps private payment behavior consistent across languages and platforms while exposing a simple and standard interface at the HTTP level.
+This keeps private payment flows explicit and consistent while keeping ShadowPay
+specific logic inside SDKs rather than scattered through application code.
