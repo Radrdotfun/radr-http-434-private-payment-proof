@@ -197,4 +197,118 @@ SHOULD:
    verification fails.
 
 Clients SHOULD avoid automatically paying for arbitrary resources without
-expl
+explicit configuration or user consent.
+
+A client that does not understand 434 will treat it as a generic 4xx status
+code and is not required to perform any special behavior.
+
+### 4.2. Server behavior
+
+A server that implements 434 MUST:
+
+1. Only emit 434 when a required private payment proof is missing, malformed,
+   or otherwise unusable, and this is the relevant reason for the request
+   failure.  
+2. Clearly indicate in the response representation that a private payment proof
+   is required and provide enough information to identify the relevant payment
+   scheme and context.  
+3. Verify any proofs provided in follow up requests using the rules of the
+   underlying payment system.  
+4. Map proof verification results into appropriate HTTP status codes, which MAY
+   include:
+   - 422 (Unprocessable Content) for malformed or cryptographically invalid
+     proofs.  
+   - 409 (Conflict) for reused nullifiers or other double spend indicators.  
+   - 423 (Locked) when funds exist but are temporarily locked.  
+   - 425 (Too Early) when time based conditions are not yet satisfied.  
+   - 428 (Precondition Required) when a required payment precondition such as
+     escrow funding has not been met.
+
+A server MAY use 434 in combination with other access control mechanisms such as
+authentication and authorization. In such cases:
+
+- Authentication failures SHOULD continue to use status codes such as 401
+  (Unauthorized).  
+- Authorization failures that are not related to payment SHOULD continue to use
+  status codes such as 403 (Forbidden).  
+- 434 SHOULD be reserved for cases where lack of a valid private payment proof
+  is the relevant condition.
+
+---
+
+## 5. IANA Considerations
+
+This document requests that IANA register the following HTTP status code in the
+"HTTP Status Code Registry":
+
+- Code: 434  
+- Short Description: Private Payment Proof Required  
+- Reference: this document
+
+---
+
+## 6. Security Considerations
+
+The 434 status code itself does not introduce new security mechanisms. It
+standardizes how existing private payment systems interact with HTTP.
+
+However, deployments must consider the following:
+
+Privacy leakage  
+: Servers SHOULD avoid including clear text payer identities, payment amounts,
+or other sensitive details in 434 responses. Fields that describe the payment
+requirement SHOULD be limited to non sensitive identifiers and metadata.
+
+Proof reuse and replay  
+: Private payment systems that use nullifiers or similar constructs MUST ensure
+that replayed proofs are detectable and rejected. Servers SHOULD map such events
+to a distinct status code such as 409 (Conflict).
+
+Denial of service  
+: Proof verification is often more expensive than normal request processing.
+Servers SHOULD implement rate limiting, resource accounting, or other controls
+to avoid being overloaded by proof verification attempts.
+
+Transport security  
+: When using 434 in web contexts, implementers SHOULD ensure that payment flows
+and proof submission use secure transport. HTTP over TLS is strongly
+RECOMMENDED.
+
+Interaction with other mechanisms  
+: The use of 434 does not weaken or replace existing security requirements for
+authentication, authorization, or transport. It is an additional signal layered
+on top of those mechanisms.
+
+---
+
+## 7. References
+
+### 7.1. Normative References
+
+RFC 2119  
+: Key words for use in RFCs to indicate requirement levels.
+
+RFC 8174  
+: Clarification of the usage of key words for requirement levels.
+
+RFC 9110  
+: HTTP Semantics.
+
+### 7.2. Informative References
+
+RFC 7231  
+: Hypertext Transfer Protocol version 1.1 semantics and content.
+
+Relevant private payment system specifications  
+: As deployed by specific implementations that choose to use status code 434.
+
+---
+
+## 8. Acknowledgements
+
+This draft is informed by implementation experience with privacy preserving
+payment systems and zero knowledge proof based payment schemes on various
+platforms.
+
+The authors thank reviewers and implementers who provided feedback on early
+versions of this document.
