@@ -1,4 +1,4 @@
-// examples/fastapi-http-434-dependency.py
+# examples/fastapi-http-434-dependency.py
 
 from fastapi import FastAPI, Header, HTTPException, Depends
 from typing import Optional, Dict, Any
@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 app = FastAPI(title="ShadowPay HTTP 434 demo")
 
-// In memory demo state.
+# In memory demo state.
 used_nullifiers: set[str] = set()
 invoices: Dict[str, Dict[str, Any]] = {
     "inv_demo_1": {
@@ -156,8 +156,8 @@ async def verify_shadowpay_dependency(
             },
         )
 
-    // Real implementation would verify Groth16 proof here.
-    // For this example we treat structurally valid payload as OK.
+    # Real implementation would verify Groth16 proof here.
+    # For this example we treat structurally valid payload as OK.
     used_nullifiers.add(x_shadowpay_nullifier)
 
     return ShadowPayContext(
